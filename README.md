@@ -1,6 +1,7 @@
 # Aptcheckr
 
 ![aptcheckr logo](Aptcheckr.webp)
+<img src="/projects/atpcheckr/Aptcheckr.webp" width="50%" />
 
 _Aptcheckr_ is a command line tool to verify apt repositories.
 It's based in [libapt](https://lts-linux.eu/projects/libapt/)

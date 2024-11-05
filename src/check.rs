@@ -1,22 +1,35 @@
+//! Implementation of apt repo check.
+
 use std::collections::HashMap;
 
 use libapt::{Architecture, Error, PackageIndex, PackageVersion, Release, Result, SourceIndex, VersionRelation, get_etag};
 use log::{debug, error, info, warn};
+use serde::{Deserialize, Serialize};
 
+
+/// AptCheck groups all metadata and apt repository check results.
+#[derive(Debug, Deserialize, Serialize)]
 pub struct AptCheck {
+    // Release to check.
+    release: Release,
+    // Components to check.
     components: Vec<String>,
+    // Architectures to check.
     architectures: Vec<Architecture>,
+    // Parsed binary indices.
     binary_indices: Vec<PackageIndex>,
+    // Parsed source indices. (Component, Index)
     source_indices: HashMap<String, SourceIndex>,
+    // List of found issues. (Component, Architecture, found Issue)
     issues: Vec<(String, Architecture, Error)>,
     // (Component, Package, Dependency)
     missing_packages: Vec<(String, String, PackageVersion)>,
     // (Component, Package, Source)
     missing_sources: Vec<(String, String, String)>,
-    release: Release,
 }
 
 impl AptCheck {
+    /// Initialize the AptCheck structure.
     pub fn new(release: Release, components: Vec<String>, architectures: Vec<String>) -> Result<AptCheck> {
         let components = if components.is_empty() {
             release.components.clone()
@@ -46,7 +59,11 @@ impl AptCheck {
         })
     }
 
-    pub fn check_repo(&mut self) -> Result<bool> {
+    /// Execute the apt repository check.
+    /// 
+    /// Returns true if no issues were found, false else.
+    /// In case of major issues the error is provided as result.
+    pub async fn check_repo(&mut self) -> Result<bool> {
 
         info!("Checking compliance of InRelease file...");
         match self.release.check_compliance() {
@@ -54,12 +71,16 @@ impl AptCheck {
             Err(e) => warn!("InRelease does not comply to Debian policy: {e}"),
         }
     
+        // Run check focussing on one component.
         info!("Checking single components...");
-        self.check()?;
+        self.check().await?;
 
+        // Run checks requiring more components, e.g. availability of dependencies.
         info!("Checking cross components...");
-        self.cross_check()?;
+        self.cross_check().await?;
         
+        // Log results
+        // TODO: better report!
         info!("Found {} issues.", self.issues.len());
         for (component, architecture, issue) in &self.issues {
             error!("Found issue in component {component} for architecture {architecture}: {issue}");
@@ -75,38 +96,46 @@ impl AptCheck {
             warn!("Component {component}: Source {} of package {} is missing.", source, package);
         }
     
+        // TODO: fix check and consider package metadata issues
         Ok(self.issues.is_empty() && self.missing_packages.is_empty() && self.missing_sources.is_empty())
     }
     
-    fn cross_check(&mut self) -> Result<()> {
+    /// Do checks involving multiple components.
+    async fn cross_check(&mut self) -> Result<()> {
         // TODO: search for missing sources and packages in other components.
         Ok(())
     }
 
-    fn check(&mut self) -> Result<()> {
+    // Do checks for a single component.
+    async fn check(&mut self) -> Result<()> {
+        // Check sources for all component.
+        // This also initializes the source package index 
+        // which is required to check the availability of 
+        // source packages.
         for component in &self.components.clone() {
-            match self.check_source_component(component) {
+            match self.check_source_component(component).await {
                 Ok(_) => {},
                 Err(e) => {
                     let message = format!("Checking sources of component {component} failed: {e}");
                     error!("{}", message);
-                    self.issues.push((component.clone(), Architecture::Source, Error::new(&message, libapt::ErrorType::DownloadFailure)));
+                    self.issues.push((component.clone(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
                 }
             }
         }
 
+        // Check the binary indices for all architectures and components.
         for component in &self.components.clone() {
             for architecture in &self.architectures.clone() {
                 if architecture == &Architecture::Source {
                     continue;
                 }
 
-                match self.check_binary_component(component, architecture) {
+                match self.check_binary_component(component, architecture).await {
                     Ok(_) => {},
                     Err(e) => {
                         let message = format!("Checking component {component} for architecture {architecture} failed: {e}");
                         error!("{}", message);
-                        self.issues.push((component.clone(), architecture.clone(), Error::new(&message, libapt::ErrorType::DownloadFailure)));
+                        self.issues.push((component.clone(), architecture.clone(), Error::new(&message, libapt::ErrorType::Download)));
                     }
                 }
             }
@@ -115,7 +144,7 @@ impl AptCheck {
         Ok(())
     }
     
-    fn check_binary_component(&mut self, component: &str, architecture: &Architecture) -> Result<()> {
+    async fn check_binary_component(&mut self, component: &str, architecture: &Architecture) -> Result<()> {
         info!("Checking binary index of component {component} for architecture {architecture}...");
         let index = PackageIndex::new(&self.release, component, architecture)?;
 
@@ -127,7 +156,7 @@ impl AptCheck {
                 None => {
                     let message = format!("Package {} of component {} and architecture {} is missing.", package, component, architecture);
                     error!("{}", message);
-                    self.issues.push((component.to_string(), architecture.clone(), Error::new(&message, libapt::ErrorType::DownloadFailure)));
+                    self.issues.push((component.to_string(), architecture.clone(), Error::new(&message, libapt::ErrorType::Download)));
 
                     continue;
                 }
@@ -140,7 +169,7 @@ impl AptCheck {
                 Err(e) => {
                     let message = format!("File {} of source {} is broken: {e}", &package.link.url, package.package);
                     error!("{}", message);
-                    self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::DownloadFailure)));
+                    self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
                 }
             }
 
@@ -187,7 +216,7 @@ impl AptCheck {
         Ok(())
     }
     
-    fn check_source_component(&mut self, component: &str) -> Result<()> {
+    async fn check_source_component(&mut self, component: &str) -> Result<()> {
         info!("Checking sources of component {component}...");
 
         let index = SourceIndex::new(&self.release, component)?;
@@ -201,7 +230,7 @@ impl AptCheck {
                 None => {
                     let message = format!("Source {} of component {} is missing.", source, component);
                     error!("{}", message);
-                    self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::DownloadFailure)));
+                    self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
 
                     continue;
                 }
@@ -214,7 +243,7 @@ impl AptCheck {
                     Err(e) => {
                         let message = format!("File {} of source {} is broken: {e}", link.url, package.package);
                         error!("{}", message);
-                        self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::DownloadFailure)));
+                        self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
                     }
                 }
             }

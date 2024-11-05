@@ -6,6 +6,7 @@ mod check;
 
 use crate::check::AptCheck;
 
+/// Setup env_logger.
 fn init_logging() {
     Builder::new()
         .filter(None, LevelFilter::Debug)
@@ -13,6 +14,7 @@ fn init_logging() {
         .init();
 }
 
+/// Log user-provided distro information.
 fn log_distro(distro: &Distro) {
     let name = if let Some(name) = &distro.name {
         format!("Name: {}", name)
@@ -31,7 +33,8 @@ fn log_distro(distro: &Distro) {
     info!("Distro-Info:\nURL: {}\n{}\nKey: {}", distro.url, name, key);
 }
 
-pub fn check_repo(distro: &Distro, components: Vec<String>, architectures: Vec<String>) -> Result<bool> {
+/// Lib entry point for apt repo checking.
+pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures: Vec<String>) -> Result<bool> {
     init_logging();
     log_distro(distro);
 

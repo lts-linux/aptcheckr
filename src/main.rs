@@ -4,7 +4,9 @@ use clap::{arg, command};
 use libapt::{Distro, Key};
 use aptcheckr::check_repo;
 
-fn main() {
+/// App entry point - processing of CLI parameters.
+#[tokio::main]
+async fn main() {
     let matches = command!()
         .arg(arg!([url] "URL of the APT repository. Defaults to Ubuntu apt repo.").required(false))
         .arg(arg!(-d --distro <DISTRO> "Name of the distribution. Defaults to jammy.").required(false))
@@ -71,7 +73,7 @@ fn main() {
         key: key,
     };
 
-    match check_repo(&d, components, architectures) {
+    match check_repo(&d, components, architectures).await {
         Ok(success) => {
             if success {
                 println!("Repo is OK.");

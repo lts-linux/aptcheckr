@@ -26,11 +26,13 @@ pub struct AptCheck {
     missing_packages: Vec<(String, String, PackageVersion)>,
     // (Component, Package, Source)
     missing_sources: Vec<(String, String, String)>,
+    // Check existence of referenced files
+    check_files: bool
 }
 
 impl AptCheck {
     /// Initialize the AptCheck structure.
-    pub fn new(release: Release, components: Vec<String>, architectures: Vec<String>) -> Result<AptCheck> {
+    pub fn new(release: Release, components: Vec<String>, architectures: Vec<String>, check_files: bool) -> Result<AptCheck> {
         let components = if components.is_empty() {
             release.components.clone()
         } else {
@@ -56,6 +58,7 @@ impl AptCheck {
             missing_packages: Vec::new(),
             missing_sources: Vec::new(),
             release: release,
+            check_files: check_files,
         })
     }
 
@@ -162,14 +165,16 @@ impl AptCheck {
                 }
             };
 
-            debug!("Checking file of binary package {}...", package.package);
-            // Check existence of linked deb file.
-            match get_etag(&package.link.url).await {
-                Ok(_) => {} // pass!
-                Err(e) => {
-                    let message = format!("File {} of source {} is broken: {e}", &package.link.url, package.package);
-                    error!("{}", message);
-                    self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
+            if self.check_files {
+                debug!("Checking file of binary package {}...", package.package);
+                // Check existence of linked deb file.
+                match get_etag(&package.link.url).await {
+                    Ok(_) => {} // pass!
+                    Err(e) => {
+                        let message = format!("File {} of source {} is broken: {e}", &package.link.url, package.package);
+                        error!("{}", message);
+                        self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
+                    }
                 }
             }
 
@@ -236,14 +241,16 @@ impl AptCheck {
                 }
             };
 
-            debug!("Checking links of source {source}...");
-            for (_key, link) in package.links {
-                match get_etag(&link.url).await {
-                    Ok(_) => {} // pass!
-                    Err(e) => {
-                        let message = format!("File {} of source {} is broken: {e}", link.url, package.package);
-                        error!("{}", message);
-                        self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
+            if self.check_files {
+                debug!("Checking links of source {source}...");
+                for (_key, link) in package.links {
+                    match get_etag(&link.url).await {
+                        Ok(_) => {} // pass!
+                        Err(e) => {
+                            let message = format!("File {} of source {} is broken: {e}", link.url, package.package);
+                            error!("{}", message);
+                            self.issues.push((component.to_string(), Architecture::Source, Error::new(&message, libapt::ErrorType::Download)));
+                        }
                     }
                 }
             }

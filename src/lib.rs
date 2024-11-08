@@ -48,7 +48,7 @@ fn save_as_json(check: AptCheck, filename: &str) ->Result<()> {
         }
     }; 
 
-    let data = match serde_json::to_string(&check) {
+    let data = match serde_json::to_string_pretty(&check) {
         Ok(data) => data,
         Err(e) => {
             let message = format!("Json serializing failed! {e}");
@@ -72,7 +72,7 @@ fn save_as_json(check: AptCheck, filename: &str) ->Result<()> {
 }
 
 /// Lib entry point for apt repo checking.
-pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures: Vec<String>) -> Result<bool> {
+pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures: Vec<String>, check_files: bool) -> Result<bool> {
     init_logging();
     log_distro(distro);
 
@@ -80,7 +80,7 @@ pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures:
     let release = Release::from_distro(distro).await?;
 
     debug!("Checking indices for components {:?} and architectures {:?}...", components, architectures);
-    let mut check = AptCheck::new(release, components, architectures)?;
+    let mut check = AptCheck::new(release, components, architectures, check_files)?;
 
     let result = check.check_repo().await?;
 

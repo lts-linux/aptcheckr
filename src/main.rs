@@ -15,6 +15,7 @@ async fn main() {
         .arg(arg!(-r --rawkey "Key is a binary key, i.e. not armored.").required(false))
         .arg(arg!(-c --component <COMPONENT> ... "Component to check.").required(false))
         .arg(arg!(-a --arch <ARCHITECTURE> ... "Architecture to check.").required(false))
+        .arg(arg!(-f --files "Check existence of referenced files.").required(false))
         .get_matches();
 
     let url = match matches.get_one::<String>("url"){
@@ -73,7 +74,9 @@ async fn main() {
         key: key,
     };
 
-    match check_repo(&d, components, architectures).await {
+    let check_files = matches.get_flag("files");
+
+    match check_repo(&d, components, architectures, check_files).await {
         Ok(success) => {
             if success {
                 println!("Repo is OK.");

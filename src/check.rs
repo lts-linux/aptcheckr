@@ -77,7 +77,7 @@ impl AptCheck {
 
         // Run checks requiring more components, e.g. availability of dependencies.
         info!("Checking cross components...");
-        self.cross_check().await?;
+        self.cross_check()?;
         
         // Log results
         // TODO: better report!
@@ -101,7 +101,7 @@ impl AptCheck {
     }
     
     /// Do checks involving multiple components.
-    async fn cross_check(&mut self) -> Result<()> {
+    fn cross_check(&mut self) -> Result<()> {
         // TODO: search for missing sources and packages in other components.
         Ok(())
     }
@@ -146,7 +146,7 @@ impl AptCheck {
     
     async fn check_binary_component(&mut self, component: &str, architecture: &Architecture) -> Result<()> {
         info!("Checking binary index of component {component} for architecture {architecture}...");
-        let index = PackageIndex::new(&self.release, component, architecture)?;
+        let index = PackageIndex::new(&self.release, component, architecture).await?;
 
         for package in index.packages() {
             debug!("Checking binary package {package}...");
@@ -164,7 +164,7 @@ impl AptCheck {
 
             debug!("Checking file of binary package {}...", package.package);
             // Check existence of linked deb file.
-            match get_etag(&package.link.url) {
+            match get_etag(&package.link.url).await {
                 Ok(_) => {} // pass!
                 Err(e) => {
                     let message = format!("File {} of source {} is broken: {e}", &package.link.url, package.package);
@@ -219,7 +219,7 @@ impl AptCheck {
     async fn check_source_component(&mut self, component: &str) -> Result<()> {
         info!("Checking sources of component {component}...");
 
-        let index = SourceIndex::new(&self.release, component)?;
+        let index = SourceIndex::new(&self.release, component).await?;
 
         info!("Checking sources packages of component {component}...");
         for source in index.packages() {
@@ -238,7 +238,7 @@ impl AptCheck {
 
             debug!("Checking links of source {source}...");
             for (_key, link) in package.links {
-                match get_etag(&link.url) {
+                match get_etag(&link.url).await {
                     Ok(_) => {} // pass!
                     Err(e) => {
                         let message = format!("File {} of source {} is broken: {e}", link.url, package.package);

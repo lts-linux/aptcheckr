@@ -1,6 +1,6 @@
 use libapt::{Distro, Key, Release, Result};
-use log::{debug, info, LevelFilter};
-use env_logger::{Builder, WriteStyle};
+use log::{debug, info};
+use env_logger::Env;
 
 mod check;
 
@@ -8,10 +8,11 @@ use crate::check::AptCheck;
 
 /// Setup env_logger.
 fn init_logging() {
-    Builder::new()
-        .filter(None, LevelFilter::Debug)
-        .write_style(WriteStyle::Always)
-        .init();
+    let env = Env::default()
+        .filter_or("APTCHECKR_LOG_LEVEL", "info")
+        .write_style_or("APTCHECKR_LOG_STYLE", "always");
+
+    env_logger::init_from_env(env);
 }
 
 /// Log user-provided distro information.
@@ -39,12 +40,12 @@ pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures:
     log_distro(distro);
 
     debug!("Parsing InRelease file...");
-    let release = Release::from_distro(distro)?;
+    let release = Release::from_distro(distro).await?;
 
     debug!("Checking indices for components {:?} and architectures {:?}...", components, architectures);
     let mut check = AptCheck::new(release, components, architectures)?;
 
-    let result = check.check_repo()?;
+    let result = check.check_repo().await?;
 
     Ok(result)
 }

@@ -1,6 +1,9 @@
-use libapt::{Distro, Key, Release, Result};
-use log::{debug, info};
+use libapt::{Distro, Key, Release, Result, Error};
+use log::{debug, info, error};
 use env_logger::Env;
+use serde_json;
+use std::fs::File;
+use std::io::prelude::*;
 
 mod check;
 
@@ -34,6 +37,40 @@ fn log_distro(distro: &Distro) {
     info!("Distro-Info:\nURL: {}\n{}\nKey: {}", distro.url, name, key);
 }
 
+fn save_as_json(check: AptCheck, filename: &str) ->Result<()> {
+    let mut file = match File::create(filename) {
+        Ok(file) => file,
+        Err(e) => {
+            let message = format!("Saving result failed! {e}");
+            error!("{}", message);
+            // TODO: extendable errors
+            return Err(Error::new(&message, libapt::ErrorType::ApiUsage))
+        }
+    }; 
+
+    let data = match serde_json::to_string(&check) {
+        Ok(data) => data,
+        Err(e) => {
+            let message = format!("Json serializing failed! {e}");
+            error!("{}", message);
+            // TODO: extendable errors
+            return Err(Error::new(&message, libapt::ErrorType::ApiUsage))
+        }
+    };
+
+    match file.write(&data.as_bytes()) {
+        Ok(_) => {},
+        Err(e) => {
+            let message = format!("Writing json failed! {e}");
+            error!("{}", message);
+            // TODO: extendable errors
+            return Err(Error::new(&message, libapt::ErrorType::ApiUsage))
+        }
+    }
+
+    Ok(())
+}
+
 /// Lib entry point for apt repo checking.
 pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures: Vec<String>) -> Result<bool> {
     init_logging();
@@ -46,6 +83,8 @@ pub async fn check_repo(distro: &Distro, components: Vec<String>, architectures:
     let mut check = AptCheck::new(release, components, architectures)?;
 
     let result = check.check_repo().await?;
+
+    save_as_json(check, "result.json")?;
 
     Ok(result)
 }
